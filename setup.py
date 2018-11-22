@@ -35,6 +35,7 @@ setup(
     "dxpy",
     "pulsarpy",
     "requests",
+    "scgpm-seqresults-dnanexus",
   ],
   long_description = long_description,                                                                 
   long_description_content_type = "text/markdown",
@@ -45,5 +46,5 @@ setup(
   }
   scripts = scripts,
   url = "https://github.com/StanfordBioinformatics/pulsarpy_dx/wiki",
-  version = "1.0.0",
+  version = "0.1.0",
 )

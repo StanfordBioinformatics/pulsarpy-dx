@@ -1,0 +1,86 @@
+{
+    "Maximum Insert Size": 223477395,
+    "Minimum Insert Size": 1,
+    "Median Absolute Deviation": 34,
+    "Read 2 Duplicates": {
+        "Unique": {
+            "3+mm": 0,
+            "0mm": 0,
+            "1mm": 0,
+            "w/Indel": 0,
+            "2mm": 0
+        },
+        "Non-Unique": {
+            "3+mm": 0,
+            "0mm": 0,
+            "1mm": 0,
+            "w/Indel": 0,
+            "2mm": 0
+        }
+    },
+    "Mean Insert Size": 224.739311,
+    "Pair": {
+        "Mapped PF Reads": 50904438,
+        "Failed Reads": 0,
+        "Total Reads": 52500662,
+        "Post-Filter Reads": 52500662
+    },
+    "Read 1 Duplicates": {
+        "Unique": {
+            "3+mm": 0,
+            "0mm": 0,
+            "1mm": 0,
+            "w/Indel": 0,
+            "2mm": 0
+        },
+        "Non-Unique": {
+            "3+mm": 0,
+            "0mm": 0,
+            "1mm": 0,
+            "w/Indel": 0,
+            "2mm": 0
+        }
+    },
+    "Standard Deviation": 49.773863,
+    "Read 2": {
+        "Mapped PF Reads": 25408281,
+        "Unique": {
+            "3+mm": 1441929,
+            "0mm": 15870685,
+            "1mm": 4010763,
+            "w/Indel": 183875,
+            "2mm": 1413687
+        },
+        "Non-Unique": {
+            "3+mm": 1296911,
+            "0mm": 602623,
+            "1mm": 233501,
+            "w/Indel": 215642,
+            "2mm": 138665
+        },
+        "Total Reads": 26250331,
+        "Post-Filter Reads": 26250331
+    },
+    "Median Insert Size": 216,
+    "Read 1": {
+        "Mapped PF Reads": 25496157,
+        "Unique": {
+            "3+mm": 440573,
+            "0mm": 19651304,
+            "1mm": 3218300,
+            "w/Indel": 249088,
+            "2mm": 655891
+        },
+        "Non-Unique": {
+            "3+mm": 203165,
+            "0mm": 688510,
+            "1mm": 188520,
+            "w/Indel": 121334,
+            "2mm": 79472
+        },
+        "Total Reads": 26250331,
+        "Post-Filter Reads": 26250331
+    },
+    "Sample name": "ACAGTG",
+    "Total Insert Reads": 25304749
+}

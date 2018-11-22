@@ -1,4 +1,5 @@
 dxpy
 pulsarpy
 sphinx-argparse
+scgpm-seqresults-dnanexus
 
