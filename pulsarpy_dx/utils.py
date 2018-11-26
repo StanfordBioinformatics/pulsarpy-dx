@@ -11,6 +11,25 @@ from pulsarpy_dx import log_error
 from pulsarpy import models
 import scgpm_seqresults_dnanexus.dnanexus_utils as du 
 
+class BarcodeNotSet(Exception):
+    """
+    Raised when a barcode (paired or single-end) is expected to be set on a Library record but isn't.
+    """
+
+class MultipleHitsException(Exception):
+    """
+    Raised when searching for a record in Pulsar and multiple hits were found when only a unique
+    hit was expected.
+    """
+    pass
+
+
+class MissingSequencingRequest(Exception):
+    """
+    Raised when a SequencingRequest was expected to be found in Pulsar but was not. 
+    """
+
+
 def get_or_create_srun_by_ids(sreq_id, dx_project_id):
     """
     A wrapper over get_or_create_srun() below that simplifies the parameters to use IDs instead of
@@ -70,6 +89,10 @@ def create_srun(sreq, dxres):
     Creates a SequencingRun record based on the provided DNAnexus sequencing results, to be linked
     to the given SequencingRequest object.
 
+    Note that I would also like to try and set the attributes `SequencingRun.forward_read_len` and
+    `SequencingRun.reverse_read_len`, however, I can't obtain these results from DNAnexus based on
+    the existing metadata that's sent there via GSSC.
+
     Args:
         sreq: A `pulsarpy.models.SequencingRequest` instance.
         dxres: `scgpm_seqresults_dnanexus.dnanexus_utils.du.DxSeqResults()` instance that contains
@@ -86,20 +109,7 @@ def create_srun(sreq, dxres):
 
 def create_data_storage(dxres):
     """
-    Creates a DataStorage record for the given SequencingRun record based on the given DNAnexus
-    sequencing results. After the DataStorage record is created, a few attribuets of the SequencingRun
-    object will then be set:
-
-        1. `SequencingRun.data_storage_id`: Link to newly creatd DataStroage record.
-        2. `SequencingRun.lane`: Set to the value of the DNAnexus project property "seq_lane_index".
-        3. `SequencingRun.status`: Set to "finished".
-
-
-     Note that I would also like to try and set the attributes `SequencingRun.forward_read_len` and
-     `SequencingRun.reverse_read_len`, however, I can't obtain these results from DNAnexus based on
-     the existing metadata that's sent there via GSSC.
-
-    key in the SequeningRun record.
+    Creates a DataStorage record for the given DNAnexus sequencing results.
 
     Args:
         dxres: `scgpm_seqresults_dnanexus.dnanexus_utils.du.DxSeqResults()` instance that contains
@@ -135,51 +145,76 @@ def check_pairedend_correct(sreq, dx_pe_val):
             sreq.patch({"paired_end": True})
 
 def import_dx_project(dx_project_id):
-    dxres = du.DxSeqResults(dx_project_id=t)
-    lib_name_prop = dxres.dx_project_props["library_name"]
-    # First search by name, then by ID if the former fails.
-    # Lab members submit a name by the name of SREQ-ID, where SREQ is Pulsar's
-    # abbreviation for the SequencingRequest model, and ID is the database ID of a
-    # SequencingRequest record. This gets stored into the library_name property of the
-    # corresponding DNanexus project. Problematically, this was also done in the same way when
-    # we were on Syapse, and we have backported some Syapse sequencing requests into Pulsar. Such
-    # SequencingRequests have been given the name as submitted in Syapse times, and this is
-    # evident when the SequencingRequest's ID is different from the ID in the SREQ-ID part.
-    # Find pulsar SequencingRequest:
+    """
+    Attemps to import DNAnexus sequencing results for the given DNAnexus project ID. This entails
+    having a SequencingRequest object in Pulsar that in turn has a SequecingRun object to import the results
+    into, creating SequencingResult objects in the process. Thus, we must first try to find the
+    appropriate SequencingRequest if it exists. If it doesn't, an Exception will be raised. 
 
+    We first try to find the SequencingRequest by matching the value of its name attribute to the 
+    DNAnexus project's library_name property value. Normally, when provinding the sequencing center a
+    name for their library to be sequenced, the lab uses the record ID of the SequencingRequest object,
+    which is the concatenation of the model abbreviation in Pulsar, a hyphen, and the record's primary 
+    ID (i.e. SREQ-25). Normally, we could just search by the integer portion on the primary ID field. 
+    However, SequencingRequests from the old Syapse LIMS have been backported into Pulsar, and they
+    used the same record ID forming convention there too.  So for these records, the Syaspe record
+    ID has been added into a Pulsar SequencingRequest via the name attribute. Thus, as a precaution,
+    a SequencingRequest is first searched on its name attribute.  If that fails, then the SequencingRequests
+    are searched on the primary ID attribute using only the interger portion of the DNAnexus project's
+    library_name property. 
+
+    Raises:
+        `pulsarpy_dx.utils.MultipleHitsExcpetion`:  Multiple SequencingRequest records were found
+            in searching by name in pulsarpy.Model.replace_name_with_id().
+        `MissingSequencingRequest`: A relevant SequencingRequest record to import the DNAnexus sequencing results
+            into could not be found.         
+        `BarcodeNotSet`: A library on the SequencingRequest object at hand does not have a barcode
+            set, making it impossible to import sequening results from DNAnexus for it.  
+        `scgpm_seqresults_dnanexus.dnanexus_utils.FastqNotFound`: There aren't any FASTQ files in 
+            the DNAnexus project for a given Library, based on the barcode specified for that Library.
+    """
+    dxres = du.DxSeqResults(dx_project_id=dx_project_id)
+    lib_name_prop = dxres.dx_project_props["library_name"]
     #sreq = ppy_models.SequencingRequest.find_by(payload={"name": lib_name_prop})
     # Using Elasticsearch here mainly in order to achieve a case-insensitive search on the SequencingRequest
     # name field. 
     try:
         sreq = ppy_models.SequncingRequest(lib_name_prop) 
-    except MultipleHitsException as e:
+    except MultipleHitsException as e: # raised in pulsarpy.Model.replace_name_with_id()
         log_error("Found multiple SequencingRequest records with name '{}'. Skipping DNAnexus project {} ({}) with library_name property set to '{}'".format(lib_name_prop, t, dxres.name))
-        return
-    except ppy_models.RecordNotFound as e:
+        raise
+    except ppy_models.RecordNotFound as e: # raised in pulsarpy.Model.replace_name_with_id()
         # Search by ID. The lab sometimes doesn't add a value for SequencingRequest.name and
         # instead uses the SequencingRequest record ID, which is a concatenation of the model
         # abbreviation, a hyphen, and the records primary ID. 
         sreq = ppy_models.SequencingRequest(library_name.split("-")[1])
         if not sreq:
-            log_error("Can't find Pulsar SequencingRequest for DNAnexus project {} ({}) with library_name property set to '{}'. Skipping.".format(t, dxres.name, library_name))
-            return
+            msg = "Can't find Pulsar SequencingRequest for DNAnexus project {} ({}) with library_name property set to '{}'.".format(t, dxres.name, library_name)
+            log_error(msg)
+            raise MissingSequencingRequest(msg)
     check_pairedend_correct(sreq, dxres.dx_project_properties["paired_end"])
     srun = get_or_create_srun(sreq, dxres)
     # Check if DataStorage is aleady linked to SequencingRun object. May be if user created it
     # manually in the past.
     if not srun.data_storage_id:
         ds_json = create_data_storage(dxres)
-        srun.patch({"data_storage_id": ds_json["id"]})
-    if srun.status != "finished":
-        srun.patch({"status": "finished"})
+        srun.patch({"data_storage_id": ds_json["id"], "status": "finished"})
 
     # Create SequencingResult record for each library on the SReq
     for library_id in sreq.library_ids:
         # First check if library was 
         library = models.Library(library_id)
         barcode = library.get_barcode_sequence()
+        if not barcode:
+            msg = "Library {} does not have a barcode set.".format(library_id)
+            log_error(msg)
+            raise BarcodeNotSet(msg)
         # Find the barcode file on DNAnexus
-        barcode_files = dxres.get_fastq_files_props(barcode=barcode)
+        try:
+            barcode_files = dxres.get_fastq_files_props(barcode=barcode)
+        except scgpm_seqresults_dnanexus.dnanexus_utils.FastqNotFound as e
+            log_error(e.message)
+            raise 
         # Above - keys are the FASTQ file DXFile objects; values are the dict of associated properties
         # on DNAnexus on the file. In addition to the properties on the file in DNAnexus, an
         # additional property is present called 'fastq_file_name'.
@@ -209,4 +244,4 @@ def import_dx_project(dx_project_id):
                 payload["read2_uri"] = dxfile.project + ":" + dxfile.id
                 payload["read2_count"] = metrics["PF_READS"]
                 payload["read2_aligned_perc"] = float(metrics["PCT_PF_READS_ALIGNED"]) * 100
-            models.SequencingResult.post(payload)
+            models.SequencingResultpost(payload)
