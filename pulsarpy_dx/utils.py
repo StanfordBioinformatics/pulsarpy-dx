@@ -7,7 +7,10 @@
 #nathankw@stanford.edu
 ###
 
+import pdb
+
 from pulsarpy_dx import log_error
+from pulsarpy_dx import logger
 from pulsarpy import models
 import scgpm_seqresults_dnanexus.dnanexus_utils as du 
 
@@ -15,14 +18,6 @@ class BarcodeNotSet(Exception):
     """
     Raised when a barcode (paired or single-end) is expected to be set on a Library record but isn't.
     """
-
-class MultipleHitsException(Exception):
-    """
-    Raised when searching for a record in Pulsar and multiple hits were found when only a unique
-    hit was expected.
-    """
-    pass
-
 
 class MissingSequencingRequest(Exception):
     """
@@ -165,7 +160,7 @@ def import_dx_project(dx_project_id):
 
     Raises:
         `pulsarpy_dx.utils.MultipleHitsExcpetion`:  Multiple SequencingRequest records were found
-            in searching by name in pulsarpy.Model.replace_name_with_id().
+            in searching by name in pulsarpy.models.Model.replace_name_with_id().
         `MissingSequencingRequest`: A relevant SequencingRequest record to import the DNAnexus sequencing results
             into could not be found.         
         `BarcodeNotSet`: A library on the SequencingRequest object at hand does not have a barcode
@@ -175,24 +170,24 @@ def import_dx_project(dx_project_id):
     """
     dxres = du.DxSeqResults(dx_project_id=dx_project_id)
     lib_name_prop = dxres.dx_project_props["library_name"]
-    #sreq = ppy_models.SequencingRequest.find_by(payload={"name": lib_name_prop})
+    #sreq = models.SequencingRequest.find_by(payload={"name": lib_name_prop})
     # Using Elasticsearch here mainly in order to achieve a case-insensitive search on the SequencingRequest
     # name field. 
     try:
-        sreq = ppy_models.SequncingRequest(lib_name_prop) 
-    except MultipleHitsException as e: # raised in pulsarpy.Model.replace_name_with_id()
+        sreq = models.SequencingRequest(lib_name_prop) 
+    except models.MultipleHitsException as e: # raised in pulsarpy.models.Model.replace_name_with_id()
         log_error("Found multiple SequencingRequest records with name '{}'. Skipping DNAnexus project {} ({}) with library_name property set to '{}'".format(lib_name_prop, t, dxres.name))
         raise
-    except ppy_models.RecordNotFound as e: # raised in pulsarpy.Model.replace_name_with_id()
+    except models.RecordNotFound as e: # raised in pulsarpy.models.Model.replace_name_with_id()
         # Search by ID. The lab sometimes doesn't add a value for SequencingRequest.name and
         # instead uses the SequencingRequest record ID, which is a concatenation of the model
         # abbreviation, a hyphen, and the records primary ID. 
-        sreq = ppy_models.SequencingRequest(library_name.split("-")[1])
+        sreq = models.SequencingRequest(library_name.split("-")[1])
         if not sreq:
             msg = "Can't find Pulsar SequencingRequest for DNAnexus project {} ({}) with library_name property set to '{}'.".format(t, dxres.name, library_name)
             log_error(msg)
             raise MissingSequencingRequest(msg)
-    check_pairedend_correct(sreq, dxres.dx_project_properties["paired_end"])
+    check_pairedend_correct(sreq, dxres.dx_project_props["paired_end"])
     srun = get_or_create_srun(sreq, dxres)
     # Check if DataStorage is aleady linked to SequencingRun object. May be if user created it
     # manually in the past.
@@ -202,6 +197,10 @@ def import_dx_project(dx_project_id):
 
     # Create SequencingResult record for each library on the SReq
     for library_id in sreq.library_ids:
+        payload = {}
+        payload["mapper"] = "bwa"
+        payload["sequencing_run_id"] = srun.id
+        payload["library_id"] = library_id
         # First check if library was 
         library = models.Library(library_id)
         barcode = library.get_barcode_sequence()
@@ -211,8 +210,9 @@ def import_dx_project(dx_project_id):
             raise BarcodeNotSet(msg)
         # Find the barcode file on DNAnexus
         try:
+            logger.debug("Locating sequencing files for Library {}, barcode {}.".format(library_id, barcode))
             barcode_files = dxres.get_fastq_files_props(barcode=barcode)
-        except scgpm_seqresults_dnanexus.dnanexus_utils.FastqNotFound as e
+        except du.FastqNotFound as e:
             log_error(e.message)
             raise 
         # Above - keys are the FASTQ file DXFile objects; values are the dict of associated properties
@@ -221,27 +221,25 @@ def import_dx_project(dx_project_id):
 
         # Read barcode_stats.json to get mapped read counts for the given barcode:
         #barcode_stats = dxres.get_barcode_stats_json(barcode=barcode)
+        
+        logger.debug("Download alignment summary metrics for barcode {}.".format(barcode))
         asm = dxres.get_alignment_summary_metrics(barcode=barcode)
         for dxfile in barcode_files:
             props = barcode_files[dxfile]
             read_num = int(props["read"])
             if not read_num in [1, 2]:
                 raise Exception("Unknown read number '{}'. Should be either 1 or 2.".format(read_num))
-            payload = {}
-            payload["library_id"] = library_id
-            payload["mapper"] = "bwa"
-            payload["sequencing_run_id"] = srun.id
 
             if sreq.paired_end:
-                payload["pair_aligned_perc"] = float(asm["PAIR"]["PCT_READS_ALIGNED_IN_PAIRS"]) * 100
+                payload["pair_aligned_perc"] = round(float(asm["PAIR"]["PCT_READS_ALIGNED_IN_PAIRS"]) * 100, 2)
             if read_num == 1:
                 metrics = asm["FIRST_OF_PAIR"]
                 payload["read1_uri"] = dxfile.project + ":" + dxfile.id
                 payload["read1_count"] = metrics["PF_READS"]
-                payload["read1_aligned_perc"] = float(metrics["PCT_PF_READS_ALIGNED"]) * 100
+                payload["read1_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
             else:
                 metrics = asm["SECOND_OF_PAIR"]
                 payload["read2_uri"] = dxfile.project + ":" + dxfile.id
                 payload["read2_count"] = metrics["PF_READS"]
-                payload["read2_aligned_perc"] = float(metrics["PCT_PF_READS_ALIGNED"]) * 100
-            models.SequencingResultpost(payload)
+                payload["read2_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
+        models.SequencingResult.post(payload)

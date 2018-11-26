@@ -32,7 +32,7 @@ setup(
   ], 
   description = "A client for Pulsar LIMS that integrates sequencing results from DNAnexus",
   install_requires = [
-    "dxpy",
+    "dxpy3",
     "pulsarpy",
     "requests",
     "scgpm-seqresults-dnanexus",
