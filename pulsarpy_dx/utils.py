@@ -12,6 +12,7 @@ import pdb
 from pulsarpy_dx import log_error
 from pulsarpy_dx import logger
 from pulsarpy import models
+from pulsarpy.elasticsearch_utils import MultipleHitsException
 import scgpm_seqresults_dnanexus.dnanexus_utils as du 
 
 class BarcodeNotSet(Exception):
@@ -93,6 +94,7 @@ def create_srun(sreq, dxres):
         dxres: `scgpm_seqresults_dnanexus.dnanexus_utils.du.DxSeqResults()` instance that contains
                sequencing results metadata in DNAnexus for the given srun.
     """
+    logger.debug("Creating SequencingRun and associated DataStorage")
     data_storage_json = create_data_storage(dxres)
     payload = {}
     payload["name"] = dxres.dx_project_props["seq_run_name"]
@@ -100,6 +102,7 @@ def create_srun(sreq, dxres):
     payload["status"] = "finished"
     payload["data_storage_id"]	= data_storage_json["id"]
     payload["lane"] = dxres.dx_project_props["seq_lane_index"]
+    logger.debug("Creating SequencingRun record.")
     return models.SequencingRun.post(payload)
 
 def create_data_storage(dxres):
@@ -114,6 +117,7 @@ def create_data_storage(dxres):
         `dict`. The response from the server containing the JSON serialization of the new
             DataStorage record.
     """
+    logger.debug("In create_data_storage().")
     payload = {}
     payload["name"] = dxres.dx_project_name
     payload["project_identifier"] = dxres.dx_project_id
@@ -159,7 +163,7 @@ def import_dx_project(dx_project_id):
     library_name property. 
 
     Raises:
-        `pulsarpy_dx.utils.MultipleHitsExcpetion`:  Multiple SequencingRequest records were found
+        `pulsarpy.elasticsearch_utils.MultipleHitsException`:  Multiple SequencingRequest records were found
             in searching by name in pulsarpy.models.Model.replace_name_with_id().
         `MissingSequencingRequest`: A relevant SequencingRequest record to import the DNAnexus sequencing results
             into could not be found.         
@@ -168,27 +172,33 @@ def import_dx_project(dx_project_id):
         `scgpm_seqresults_dnanexus.dnanexus_utils.FastqNotFound`: There aren't any FASTQ files in 
             the DNAnexus project for a given Library, based on the barcode specified for that Library.
     """
+    logger.debug("Preparing to import DNAnexus sequencing results for {}.".format(dx_project_id))
     dxres = du.DxSeqResults(dx_project_id=dx_project_id)
     lib_name_prop = dxres.dx_project_props["library_name"]
+    logger.debug("DNAnexus library_name property value: {}.".format(lib_name_prop))
     #sreq = models.SequencingRequest.find_by(payload={"name": lib_name_prop})
     # Using Elasticsearch here mainly in order to achieve a case-insensitive search on the SequencingRequest
     # name field. 
+    logger.debug("Searching Pulsar for matching SequencingRequest record.")
     try:
         sreq = models.SequencingRequest(lib_name_prop) 
-    except models.MultipleHitsException as e: # raised in pulsarpy.models.Model.replace_name_with_id()
+    except MultipleHitsException as e: # raised in pulsarpy.models.Model.replace_name_with_id()
         log_error("Found multiple SequencingRequest records with name '{}'. Skipping DNAnexus project {} ({}) with library_name property set to '{}'".format(lib_name_prop, t, dxres.name))
         raise
     except models.RecordNotFound as e: # raised in pulsarpy.models.Model.replace_name_with_id()
         # Search by ID. The lab sometimes doesn't add a value for SequencingRequest.name and
         # instead uses the SequencingRequest record ID, which is a concatenation of the model
         # abbreviation, a hyphen, and the records primary ID. 
-        sreq = models.SequencingRequest(library_name.split("-")[1])
-        if not sreq:
-            msg = "Can't find Pulsar SequencingRequest for DNAnexus project {} ({}) with library_name property set to '{}'.".format(t, dxres.name, library_name)
+        try:
+            sreq = models.SequencingRequest(lib_name_prop.split("-")[1])
+        except models.RecordNotFound:
+            msg = "Can't find Pulsar SequencingRequest for DNAnexus project {} ({}) with library_name property set to '{}'.".format(dx_project_id, dxres.dx_project_name, lib_name_prop)
             log_error(msg)
             raise MissingSequencingRequest(msg)
     check_pairedend_correct(sreq, dxres.dx_project_props["paired_end"])
+    logger.debug("Found SequencingRequest {}.".format(sreq.id))
     srun = get_or_create_srun(sreq, dxres)
+    logger.debug("SequencingRun record is: {}.".format(srun.id))
     # Check if DataStorage is aleady linked to SequencingRun object. May be if user created it
     # manually in the past.
     if not srun.data_storage_id:
@@ -209,6 +219,7 @@ def import_dx_project(dx_project_id):
             log_error(msg)
             raise BarcodeNotSet(msg)
         # Find the barcode file on DNAnexus
+        logger.debug("Processing Library {} ({}) with barcode {}.".format(library.name, library_id, barcode))
         try:
             logger.debug("Locating sequencing files for Library {}, barcode {}.".format(library_id, barcode))
             barcode_files = dxres.get_fastq_files_props(barcode=barcode)
@@ -232,14 +243,15 @@ def import_dx_project(dx_project_id):
 
             if sreq.paired_end:
                 payload["pair_aligned_perc"] = round(float(asm["PAIR"]["PCT_READS_ALIGNED_IN_PAIRS"]) * 100, 2)
+            file_id = dxfile.id
             if read_num == 1:
                 metrics = asm["FIRST_OF_PAIR"]
-                payload["read1_uri"] = dxfile.project + ":" + dxfile.id
+                payload["read1_uri"] = file_id
                 payload["read1_count"] = metrics["PF_READS"]
                 payload["read1_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
             else:
                 metrics = asm["SECOND_OF_PAIR"]
-                payload["read2_uri"] = dxfile.project + ":" + dxfile.id
+                payload["read2_uri"] = file_id
                 payload["read2_count"] = metrics["PF_READS"]
                 payload["read2_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
         models.SequencingResult.post(payload)

@@ -18,16 +18,13 @@ https://docs.google.com/document/d/1ykBa2D7kCihzIdixiOFJiSSLqhISSlqiKGMurpW5A6s/
 and https://docs.google.com/a/stanford.edu/document/d/1AxEqCr4dWyEPBfp2r8SMtz8YE_tTTme730LsT_3URdY/edit?usp=sharing.
 """
 
-import os
-import sys
-import subprocess
-import logging
 import argparse
-import json
+import logging
 
 import dxpy
 
 import pulsarpy.models
+import pulsarpy.utils
 from pulsarpy.elasticsearch_utils import MultipleHitsException
 import scgpm_seqresults_dnanexus.dnanexus_utils as du
 from pulsarpy_dx import logger
@@ -40,21 +37,35 @@ ENCODE_ORG = "org-snyder_encode"
 
 def get_parser():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('-d',"--days-ago",type=int,default=30, help="""
+        The number of days ago to query for new projects that are billed to {}.""".format(ENCODE_ORG)
+    )
     return parser
 
 def main():
-    get_parser()
-    #accept pending transfers
-    transferred = du.accept_project_transfers(dx_username=DX_USER,access_level="ADMINISTER",queue="ENCODE",org=ENCODE_ORG,share_with_org="CONTRIBUTE")
-    #transferred is a dict. identifying the projects that were transferred to the specified billing account. Keys are the project IDs, and values are the project names.
-    logger.debug("The following projects were transferred to {org}:".format(org=ENCODE_ORG))
-    logger.debug(transferred)
-
-    if not transferred: #will be an empty dict otherwise.
+    parser = get_parser()
+    args = parser.parse_args()
+    days_ago = args.days_ago 
+    days_ago = "-" + str(days_ago) + "d" 
+    projects = list(dxpy.find_projects(created_after=days_ago,billed_to=ENCODE_ORG))
+    # projects is a list of dicts (was a generator)
+    num_projects = len(projects)
+    logger.debug("Found {} projects.".format(num_projects))
+    if projects:
+        for i in range(num_projects):
+            logger.debug("{}. {}".format(str(i + 1), projects[i]["id"]))
+    else: 
         return
-    transferred_proj_ids = transferred.keys()
-    for t in transferred_proj_ids:
-        uitls.import_dx_project(t)
+    for i in projects:
+        try:
+            utils.import_dx_project(i["id"])
+        except Exception as e:
+            form = {
+                "subject": "Error in import_seq_results.py",
+                "text": str(e),
+                "to": pulsarpy.DEFAULT_TO,
+            }
+            res = pulsarpy.utils.send_mail(form=form, from_name="import_seq_results")
 
 
 def get_read_stats(barcode_stats, read_num):
@@ -77,7 +88,6 @@ def get_read_stats(barcode_stats, read_num):
     read_num_key = "Read {}".format(read_num)
     read_hash = barcode_stats[read_num_key]
     stats = {}
-    stats["bwa_mapped"] = 
     stats["pass_filter"] = read_hash["Post-Filter Reads"]
     return stats
 
