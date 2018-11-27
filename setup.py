@@ -11,6 +11,9 @@
 # This page is useful for dependencies: 
 # http://python-packaging.readthedocs.io/en/latest/dependencies.html.
 
+# PSF tutorial for packaging up projects:                                                              
+# https://packaging.python.org/tutorials/packaging-projects
+
 import glob
 import os
 from setuptools import setup, find_packages
