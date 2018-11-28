@@ -57,12 +57,15 @@ def main():
     else: 
         return
     for i in projects:
+        proj_id = i["id"]
         try:
-            utils.import_dx_project(i["id"])
+            utils.import_dx_project(proj_id, "hi")
         except Exception as e:
+            # Send email with error details to Admin
+            body = "Error importing sequencing results for {}.\n\n".format(proj_id)
             form = {
                 "subject": "Error in import_seq_results.py",
-                "text": str(e),
+                "text": body + str(e),
                 "to": pulsarpy.DEFAULT_TO,
             }
             res = pulsarpy.utils.send_mail(form=form, from_name="import_seq_results")
