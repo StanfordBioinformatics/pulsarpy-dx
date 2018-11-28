@@ -11,7 +11,7 @@ Scripts
 .. toctree::
     :maxdepth: 1
    
-    scripts/accept_pending_transfers.rst
+    scripts/import_seq_results
 
 Client API Modules
 ------------------
