@@ -8,7 +8,7 @@ Python client for [Pulsar LIMS](https://github.com/nathankw/pulsar_lims). Pulsar
 between Pulsar LIMS and related sequencing results stored on DNAnexus, and serves to 
 import the sequencing results metadata from the DNAnexus platform into Pulsar LIMS. 
 
-The main feature of this package is the script called ``import_seq_results.py``, which looks for projects under the related DNAnexus billing org that were created within the past N days. Each project is checked if it's sequencing results need to be imoprted into Pulsar LIMS.  The way it works is quite specific to the laboratoy workflow of the Snyder Production Center of ENCODE, here at Stanford. 
+The main feature of this package is the script called ``import_seq_results.py``, which looks for projects under the specified DNAnexus billing org that were created within the past N days. Each project is checked if it's sequencing results need to be imoprted into Pulsar LIMS.  The way it works is quite specific to the laboratoy workflow of the Snyder Production Center of ENCODE, here at Stanford. 
 
 ## Lab workflow
 A SequencingRequest object is made in Pulsar LIMS. Then, an Excel form is filled out and sent to the nearby Stanford Genome Sequencing Service Center (GSSC). That form contains the library name, which the lab personel set to be equal to the SequencingRequest record's name in Pulsar. This name in the Excel form will eventually make its way to a DNAnexus project as a property called `library_name` when GSSC uploads the sequencing results there. 
