@@ -59,7 +59,7 @@ def main():
     for i in projects:
         proj_id = i["id"]
         try:
-            utils.import_dx_project(proj_id, "hi")
+            utils.import_dx_project(proj_id)
         except Exception as e:
             # Send email with error details to Admin
             body = "Error importing sequencing results for {}.\n\n".format(proj_id)
