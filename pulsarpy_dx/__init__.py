@@ -28,7 +28,3 @@ err_h = logging.FileHandler(filename=os.path.join(LOG_DIR,"log_error_dx-seq-impo
 err_h.setLevel(logging.ERROR)
 err_h.setFormatter(formatter)
 logger.addHandler(err_h)
-
-def log_error(msg):
-    logger.debug(msg)
-    logger.error(msg)

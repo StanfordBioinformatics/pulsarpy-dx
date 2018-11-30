@@ -44,9 +44,9 @@ setup(
   long_description_content_type = "text/markdown",
   name = "pulsarpy-dx",
   packages = find_packages(),
-  project_urls: {
+  project_urls = {
     "Read the Docs": "https://pulsarpy_dx.readthedocs.io/en/latest",
-  }
+  },
   scripts = scripts,
   url = "https://github.com/StanfordBioinformatics/pulsarpy_dx/wiki",
   version = "0.1.0",

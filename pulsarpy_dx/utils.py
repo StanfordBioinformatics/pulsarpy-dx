@@ -9,7 +9,6 @@
 
 import pdb
 
-from pulsarpy_dx import log_error
 from pulsarpy_dx import logger
 from pulsarpy import models
 from pulsarpy.elasticsearch_utils import MultipleHitsException
@@ -183,7 +182,7 @@ def import_dx_project(dx_project_id):
     try:
         sreq = models.SequencingRequest(lib_name_prop) 
     except MultipleHitsException as e: # raised in pulsarpy.models.Model.replace_name_with_id()
-        log_error("Found multiple SequencingRequest records with name '{}'. Skipping DNAnexus project {} ({}) with library_name property set to '{}'".format(lib_name_prop, t, dxres.name))
+        logger.error("Found multiple SequencingRequest records with name '{}'. Skipping DNAnexus project {} ({}) with library_name property set to '{}'".format(lib_name_prop, t, dxres.name))
         raise
     except models.RecordNotFound as e: # raised in pulsarpy.models.Model.replace_name_with_id()
         # Search by ID. The lab sometimes doesn't add a value for SequencingRequest.name and
@@ -193,7 +192,7 @@ def import_dx_project(dx_project_id):
             sreq = models.SequencingRequest(lib_name_prop.split("-")[1])
         except models.RecordNotFound:
             msg = "Can't find Pulsar SequencingRequest for DNAnexus project {} ({}) with library_name property set to '{}'.".format(dx_project_id, dxres.dx_project_name, lib_name_prop)
-            log_error(msg)
+            logger.error(msg)
             raise MissingSequencingRequest(msg)
     check_pairedend_correct(sreq, dxres.dx_project_props["paired_end"])
     logger.debug("Found SequencingRequest {}.".format(sreq.id))
@@ -216,7 +215,7 @@ def import_dx_project(dx_project_id):
         barcode = library.get_barcode_sequence()
         if not barcode:
             msg = "Library {} does not have a barcode set.".format(library_id)
-            log_error(msg)
+            logger.error(msg)
             raise BarcodeNotSet(msg)
         # Find the barcode file on DNAnexus
         logger.debug("Processing Library {} ({}) with barcode {}.".format(library.name, library_id, barcode))
@@ -224,7 +223,7 @@ def import_dx_project(dx_project_id):
             logger.debug("Locating sequencing files for Library {}, barcode {}.".format(library_id, barcode))
             barcode_files = dxres.get_fastq_files_props(barcode=barcode)
         except du.FastqNotFound as e:
-            log_error(e.message)
+            logger.error(e.message)
             raise 
         # Above - keys are the FASTQ file DXFile objects; values are the dict of associated properties
         # on DNAnexus on the file. In addition to the properties on the file in DNAnexus, an

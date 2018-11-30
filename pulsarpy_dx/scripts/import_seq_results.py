@@ -63,9 +63,11 @@ def main():
         except Exception as e:
             # Send email with error details to Admin
             body = "Error importing sequencing results for {}.\n\n".format(proj_id)
+            body += str(e)
+            logger.error(body)
             form = {
                 "subject": "Error in import_seq_results.py",
-                "text": body + str(e),
+                "text": body,
                 "to": pulsarpy.DEFAULT_TO,
             }
             res = pulsarpy.utils.send_mail(form=form, from_name="import_seq_results")

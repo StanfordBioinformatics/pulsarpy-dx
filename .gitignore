@@ -1,6 +1,6 @@
+pulsarpy_dx.egg-info
 build/
 dist/
-encode_utils.egg-info/
 .nfs*
 *.pyc
 *.txt
