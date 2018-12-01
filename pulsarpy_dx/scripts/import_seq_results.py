@@ -73,9 +73,11 @@ def main():
         proj_id = i["id"]
         try:
             utils.import_dx_project(proj_id)
+        except utils.MissingSequencingRequest:
+            logger.error("No SequencingRequest for DNAnexus project {}.".format(proj_id))
         except Exception as e:
             # Send email with error details to Admin
-            body = "Error importing sequencing results for {}.\n\n".format(proj_id)
+            body = "Error importing sequencing results for DNAnexus project {}.\n\n".format(proj_id)
             body += str(e)
             logger.error(body)
             form = {

@@ -204,8 +204,12 @@ def import_dx_project(dx_project_id):
         ds_json = create_data_storage(dxres)
         srun.patch({"data_storage_id": ds_json["id"], "status": "finished"})
 
+    library_sequencing_results = srun.library_sequencing_results()
     # Create SequencingResult record for each library on the SReq
     for library_id in sreq.library_ids:
+        # Check if SequencingResult record for given library already exists.
+        if library_id in library_sequencing_results:
+            continue
         payload = {}
         payload["mapper"] = "bwa"
         payload["sequencing_run_id"] = srun.id
@@ -254,3 +258,4 @@ def import_dx_project(dx_project_id):
                 payload["read2_count"] = metrics["PF_READS"]
                 payload["read2_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
         models.SequencingResult.post(payload)
+
