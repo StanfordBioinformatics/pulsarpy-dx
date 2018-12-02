@@ -171,8 +171,8 @@ def import_dx_project(dx_project_id):
         `scgpm_seqresults_dnanexus.dnanexus_utils.FastqNotFound`: There aren't any FASTQ files in 
             the DNAnexus project for a given Library, based on the barcode specified for that Library.
     """
-    logger.debug("Preparing to import DNAnexus sequencing results for {}.".format(dx_project_id))
     dxres = du.DxSeqResults(dx_project_id=dx_project_id)
+    logger.debug("Preparing to import DNAnexus sequencing results for {} ({}).".format(dx_project_id, dxres.dx_project_name))
     lib_name_prop = dxres.dx_project_props["library_name"]
     logger.debug("DNAnexus library_name property value: {}.".format(lib_name_prop))
     #sreq = models.SequencingRequest.find_by(payload={"name": lib_name_prop})
