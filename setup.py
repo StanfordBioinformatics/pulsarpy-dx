@@ -35,6 +35,7 @@ setup(
   ], 
   description = "A client for Pulsar LIMS that integrates sequencing results from DNAnexus",
   install_requires = [
+    "boto3",
     "dxpy3",
     "pulsarpy",
     "requests",
@@ -49,5 +50,5 @@ setup(
   },
   scripts = scripts,
   url = "https://github.com/StanfordBioinformatics/pulsarpy_dx/wiki",
-  version = "0.3.0",
+  version = "0.3.1",
 )
