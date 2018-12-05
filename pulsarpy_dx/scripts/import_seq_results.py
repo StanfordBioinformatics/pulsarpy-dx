@@ -78,7 +78,7 @@ def main():
         except Exception as e:
             # Send email with error details to Admin
             body = "Error importing sequencing results for DNAnexus project {}.\n\n".format(proj_id)
-            body += e.__class__ + ": " + str(e)
+            body += e.__class__.__name__ + ": " + str(e)
             logger.error(body)
             form = {
                 "subject": "Error in import_seq_results.py",
