@@ -173,13 +173,17 @@ def import_dx_project(dx_project_id):
     """
     dxres = du.DxSeqResults(dx_project_id=dx_project_id)
     logger.debug("Preparing to import DNAnexus sequencing results for {} ({}).".format(dx_project_id, dxres.dx_project_name))
-    lib_name_prop = dxres.dx_project_props["library_name"]
+    # A pulsarpy.models.DxMissingLibraryNameProperty Exception is raised if library_name property 
+    # is not present in DNAnexus project.
+    lib_name_prop = dxres.library_name 
     logger.debug("DNAnexus library_name property value: {}.".format(lib_name_prop))
     #sreq = models.SequencingRequest.find_by(payload={"name": lib_name_prop})
     # Using Elasticsearch here mainly in order to achieve a case-insensitive search on the SequencingRequest
     # name field. 
     logger.debug("Searching Pulsar for matching SequencingRequest record.")
     try:
+        # If lib_name_prop is empty, then search below will fail with message of:
+        # 'ValueError: Either the 'uid' or 'upstream' parameter must be set'. 
         sreq = models.SequencingRequest(lib_name_prop) 
     except MultipleHitsException as e: # raised in pulsarpy.models.Model.replace_name_with_id()
         logger.error("Found multiple SequencingRequest records with name '{}'. Skipping DNAnexus project {} ({}) with library_name property set to '{}'".format(lib_name_prop, t, dxres.name))
@@ -189,7 +193,11 @@ def import_dx_project(dx_project_id):
         # instead uses the SequencingRequest record ID, which is a concatenation of the model
         # abbreviation, a hyphen, and the records primary ID. 
         try:
-            sreq = models.SequencingRequest(lib_name_prop.split("-")[1])
+            if not lib_name_prop.lower().startswith("sreq-"):
+                # Don't know what this DNAnexus project is form than; ignore;
+                raise models.RecordNotFound
+            else:
+                sreq = models.SequencingRequest(lib_name_prop.lower().lstrip("sreq-"))
         except models.RecordNotFound:
             msg = "Can't find Pulsar SequencingRequest for DNAnexus project {} ({}) with library_name property set to '{}'.".format(dx_project_id, dxres.dx_project_name, lib_name_prop)
             logger.error(msg)
