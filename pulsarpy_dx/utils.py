@@ -212,58 +212,69 @@ def import_dx_project(dx_project_id):
         ds_json = create_data_storage(dxres)
         srun.patch({"data_storage_id": ds_json["id"], "status": "finished"})
 
-    library_sequencing_results = srun.library_sequencing_results()
     # Create SequencingResult record for each library on the SReq
     for library_id in sreq.library_ids:
-        # Check if SequencingResult record for given library already exists.
-        if library_id in library_sequencing_results:
-            continue
-        payload = {}
-        payload["mapper"] = "bwa"
-        payload["sequencing_run_id"] = srun.id
-        payload["library_id"] = library_id
-        # First check if library was 
         library = models.Library(library_id)
         barcode = library.get_barcode_sequence()
         if not barcode:
             msg = "Library {} does not have a barcode set.".format(library_id)
             logger.error(msg)
             raise BarcodeNotSet(msg)
-        # Find the barcode file on DNAnexus
-        logger.debug("Processing Library {} ({}) with barcode {}.".format(library.name, library_id, barcode))
-        try:
-            logger.debug("Locating sequencing files for Library {}, barcode {}.".format(library_id, barcode))
-            barcode_files = dxres.get_fastq_files_props(barcode=barcode)
-        except du.FastqNotFound as e:
-            logger.error(e.message)
-            raise 
-        # Above - keys are the FASTQ file DXFile objects; values are the dict of associated properties
-        # on DNAnexus on the file. In addition to the properties on the file in DNAnexus, an
-        # additional property is present called 'fastq_file_name'.
+        import_library(srun_id=srun.id, barcode=barcode, dxres=dxres)
 
-        # Read barcode_stats.json to get mapped read counts for the given barcode:
-        #barcode_stats = dxres.get_barcode_stats_json(barcode=barcode)
-        
-        logger.debug("Download alignment summary metrics for barcode {}.".format(barcode))
-        asm = dxres.get_alignment_summary_metrics(barcode=barcode)
-        for dxfile in barcode_files:
-            props = barcode_files[dxfile]
-            read_num = int(props["read"])
-            if not read_num in [1, 2]:
-                raise Exception("Unknown read number '{}'. Should be either 1 or 2.".format(read_num))
 
-            if sreq.paired_end:
-                payload["pair_aligned_perc"] = round(float(asm["PAIR"]["PCT_READS_ALIGNED_IN_PAIRS"]) * 100, 2)
-            file_id = dxfile.id
-            if read_num == 1:
-                metrics = asm["FIRST_OF_PAIR"]
-                payload["read1_uri"] = file_id
-                payload["read1_count"] = metrics["PF_READS"]
-                payload["read1_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
-            else:
-                metrics = asm["SECOND_OF_PAIR"]
-                payload["read2_uri"] = file_id
-                payload["read2_count"] = metrics["PF_READS"]
-                payload["read2_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
-        models.SequencingResult.post(payload)
+def import_library(srun_id, barcode, dxres):
+    srun = models.SequencingRun(srun_id)
+    sreq = models.SequencingRequest(srun.sequencing_request_id)
+    lib_bcseq_hash = sreq.get_library_barcode_sequence_hash(inverse=True)
+    library_id = lib_bcseq_hash[barcode]
+    library = models.Library(library_id)
+    # Check if SequencingResult record for given library already exists.
+    if library_id in srun.library_sequencing_results():
+        return
+    payload = {}
+    payload["mapper"] = "bwa"
+    payload["sequencing_run_id"] = srun.id
+    payload["library_id"] = library_id
+    # Find the barcode file on DNAnexus
+    logger.debug("Processing Library {} ({}) with barcode {}.".format(library.name, library_id, barcode))
+    try:
+        logger.debug("Locating sequencing files for Library {}, barcode {}.".format(library_id, barcode))
+        barcode_files = dxres.get_fastq_files_props(barcode=barcode)
+    except du.FastqNotFound as e:
+        logger.error(e.message)
+        raise 
+    # Above - keys are the FASTQ file DXFile objects; values are the dict of associated properties
+    # on DNAnexus on the file. In addition to the properties on the file in DNAnexus, an
+    # additional property is present called 'fastq_file_name'.
+
+    # Read barcode_stats.json to get mapped read counts for the given barcode:
+    #barcode_stats = dxres.get_barcode_stats_json(barcode=barcode)
+    
+    logger.debug("Download alignment summary metrics for barcode {}.".format(barcode))
+
+    #### Get Picard's Alignment summary metrics
+    # dxres.get_alignment_summary_metrics() raises a scgpm_seqresults_dnanexus.dnanexus_utils.DxMissingAlignmentSummaryMetrics 
+    # exception if a Picard alignment summary metrics file couldn't be found.
+    asm = dxres.get_alignment_summary_metrics(barcode=barcode)
+    for dxfile in barcode_files:
+        props = barcode_files[dxfile]
+        read_num = int(props["read"])
+        if not read_num in [1, 2]:
+            raise Exception("Unknown read number '{}'. Should be either 1 or 2.".format(read_num))
+
+        if sreq.paired_end:
+            payload["pair_aligned_perc"] = round(float(asm["PAIR"]["PCT_READS_ALIGNED_IN_PAIRS"]) * 100, 2)
+        file_id = dxfile.id
+        if read_num == 1:
+            metrics = asm["FIRST_OF_PAIR"]
+            payload["read1_uri"] = file_id
+            payload["read1_count"] = metrics["PF_READS"]
+            payload["read1_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
+        else:
+            metrics = asm["SECOND_OF_PAIR"]
+            payload["read2_uri"] = file_id
+            payload["read2_count"] = metrics["PF_READS"]
+            payload["read2_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
+    models.SequencingResult.post(payload)
 
