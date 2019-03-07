@@ -8,14 +8,6 @@
 ###
 
 """
-Accepts DNAnexus projects pending transfer to the ENCODE org, then downloads each of the projects to the
-local host at the designated output directory. In DNAnexus, a project property will be added to the
-project; this property is 'scHub' and will be set to True to indicate that the project was
-downloaded to the SCHub pod. Project downloading is handled by the script download_cirm_dx-project.py,
-which sends out notification emails as specified in the configuration file {} in both successful
-and unsuccessful circomstances.".format(conf_file). See more details at
-https://docs.google.com/document/d/1ykBa2D7kCihzIdixiOFJiSSLqhISSlqiKGMurpW5A6s/edit?usp=sharing
-and https://docs.google.com/a/stanford.edu/document/d/1AxEqCr4dWyEPBfp2r8SMtz8YE_tTTme730LsT_3URdY/edit?usp=sharing.
 
 If the --log-s3 flag is set, then the log files will be uploaded to S3 in the bucket specified by the
 environment variable PULSARPYDX_S3. The log files will be stored in this bucket by timestamp.

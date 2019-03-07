@@ -8,6 +8,7 @@
 ###
 
 """
+This script is used in the scheduled job I created in Heroku Scheduler addon. 
 """
 
 import argparse
@@ -16,10 +17,6 @@ import logging
 import pulsarpy
 import pulsarpy.utils
 
-
-#The environment module gbsc/gbsc_dnanexus/current should also be loaded in order to log into DNAnexus
-
-ENCODE_ORG = "org-snyder_encode"
 
 def get_parser():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
