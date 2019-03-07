@@ -8,6 +8,10 @@
 ###
 
 """
+Checks DNAnexus for new sequencing result projects and imports metadata (i.e. number of reads) into
+Pulsar by creating a SequencingRun object if necessary and one or more SequencingResult objects. 
+
+See wiki documentation in the pulsar_lims GitHub repo at https://github.com/nathankw/pulsar_lims/wiki/Importing-Sequencing-Results.
 
 If the --log-s3 flag is set, then the log files will be uploaded to S3 in the bucket specified by the
 environment variable PULSARPYDX_S3. The log files will be stored in this bucket by timestamp.
