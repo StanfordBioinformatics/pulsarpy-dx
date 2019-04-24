@@ -46,7 +46,7 @@ def get_or_create_srun(sreq, dxres):
     particular DNAnexus project. This check is satisfied if either of the following are true:
 
     1. There is a SequencingRun whose name attribute is equal to the value of the DNAnexus project's
-       `seq_run_name` property (case-insensitive), or
+       name (case-insensitive).
     2. There is a SequencingRun with an associated DataStorage whose project_identifier attribute
        is equal to the project ID if the DNAnexus project.
 
@@ -61,13 +61,13 @@ def get_or_create_srun(sreq, dxres):
     Returns:
         `pulsarpy.models.SequencingRun` instance.
     """
-    seq_run_name = dxres.dx_project_props["seq_run_name"].lower()
+    dx_proj_name = dxres.dx_project_name.strip().lower()
     srun_ids = sreq.sequencing_run_ids
     if srun_ids:
         for i in srun_ids:
             srun = models.SequencingRun(i)
             # Check by name, case-insensitive.
-            if srun.name.lower() == seq_run_name:
+            if srun.name.strip().lower() == dx_proj_name:
                 return srun
             # Also check by DataStorage
             elif srun.data_storage_id:
@@ -96,7 +96,7 @@ def create_srun(sreq, dxres):
     logger.debug("Creating SequencingRun and associated DataStorage")
     data_storage_json = create_data_storage(dxres)
     payload = {}
-    payload["name"] = dxres.dx_project_props["seq_run_name"]
+    payload["name"] = dxres.dx_project_name.strip()
     payload["sequencing_request_id"] = sreq.id
     payload["status"] = "finished"
     payload["data_storage_id"]	= data_storage_json["id"]
@@ -202,7 +202,8 @@ def import_dx_project(dx_project_id):
             msg = "Can't find Pulsar SequencingRequest for DNAnexus project {} ({}) with library_name property set to '{}'.".format(dx_project_id, dxres.dx_project_name, lib_name_prop)
             logger.error(msg)
             raise MissingSequencingRequest(msg)
-    check_pairedend_correct(sreq, dxres.dx_project_props["paired_end"])
+    if "paired_end" in dxres.dx_project_props:
+        check_pairedend_correct(sreq, dxres.dx_project_props["paired_end"])
     logger.debug("Found SequencingRequest {}.".format(sreq.id))
     srun = get_or_create_srun(sreq, dxres)
     logger.debug("SequencingRun record is: {}.".format(srun.id))
@@ -256,25 +257,30 @@ def import_library(srun_id, barcode, dxres):
     #### Get Picard's Alignment summary metrics
     # dxres.get_alignment_summary_metrics() raises a scgpm_seqresults_dnanexus.dnanexus_utils.DxMissingAlignmentSummaryMetrics 
     # exception if a Picard alignment summary metrics file couldn't be found.
-    asm = dxres.get_alignment_summary_metrics(barcode=barcode)
-    for dxfile in barcode_files:
-        props = barcode_files[dxfile]
-        read_num = int(props["read"])
-        if not read_num in [1, 2]:
-            raise Exception("Unknown read number '{}'. Should be either 1 or 2.".format(read_num))
-
-        if sreq.paired_end:
-            payload["pair_aligned_perc"] = round(float(asm["PAIR"]["PCT_READS_ALIGNED_IN_PAIRS"]) * 100, 2)
-        file_id = dxfile.id
-        if read_num == 1:
-            metrics = asm["FIRST_OF_PAIR"]
-            payload["read1_uri"] = file_id
-            payload["read1_count"] = metrics["PF_READS"]
-            payload["read1_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
-        else:
-            metrics = asm["SECOND_OF_PAIR"]
-            payload["read2_uri"] = file_id
-            payload["read2_count"] = metrics["PF_READS"]
-            payload["read2_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
+    try:
+        asm = dxres.get_alignment_summary_metrics(barcode=barcode)
+    except du.DxMissingAlignmentSummaryMetrics:
+        # GSSC doesn't do any analysis for NovaSeq runs. 
+        asm = None
+    if asm:
+        for dxfile in barcode_files:
+            props = barcode_files[dxfile]
+            read_num = int(props["read"])
+            if not read_num in [1, 2]:
+                raise Exception("Unknown read number '{}'. Should be either 1 or 2.".format(read_num))
+    
+            if sreq.paired_end:
+                payload["pair_aligned_perc"] = round(float(asm["PAIR"]["PCT_READS_ALIGNED_IN_PAIRS"]) * 100, 2)
+            file_id = dxfile.id
+            if read_num == 1:
+                metrics = asm["FIRST_OF_PAIR"]
+                payload["read1_uri"] = file_id
+                payload["read1_count"] = metrics["PF_READS"]
+                payload["read1_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
+            else:
+                metrics = asm["SECOND_OF_PAIR"]
+                payload["read2_uri"] = file_id
+                payload["read2_count"] = metrics["PF_READS"]
+                payload["read2_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
     models.SequencingResult.post(payload)
 
