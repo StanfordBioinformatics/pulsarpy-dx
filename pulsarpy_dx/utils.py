@@ -119,6 +119,9 @@ def create_data_storage(dxres):
     logger.debug("In create_data_storage().")
     payload = {}
     payload["name"] = dxres.dx_project_name
+    exists = models.DataStorage.find_by(payload=payload)
+    if exists:
+        return exists
     payload["project_identifier"] = dxres.dx_project_id
     payload["data_storage_provider_id"] = models.DataStorageProvider("DNAnexus").id
     # Create DataStorage
@@ -243,8 +246,9 @@ def import_library(srun_id, barcode, dxres):
         logger.debug("Locating sequencing files for Library {}, barcode {}.".format(library_id, barcode))
         barcode_files = dxres.get_fastq_files_props(barcode=barcode)
     except du.FastqNotFound as e:
-        logger.error(e.message)
-        raise 
+        logger.error(e.args)
+        #raise 
+        return
     # Above - keys are the FASTQ file DXFile objects; values are the dict of associated properties
     # on DNAnexus on the file. In addition to the properties on the file in DNAnexus, an
     # additional property is present called 'fastq_file_name'.
@@ -262,25 +266,35 @@ def import_library(srun_id, barcode, dxres):
     except du.DxMissingAlignmentSummaryMetrics:
         # GSSC doesn't do any analysis for NovaSeq runs. 
         asm = None
-    if asm:
-        for dxfile in barcode_files:
-            props = barcode_files[dxfile]
-            read_num = int(props["read"])
-            if not read_num in [1, 2]:
-                raise Exception("Unknown read number '{}'. Should be either 1 or 2.".format(read_num))
+    for dxfile in barcode_files:
+        file_id = dxfile.id
+        props = barcode_files[dxfile]
+        read_num = props.get("read", None)
+        if read_num:
+            read_num = int(read_num)
+        else:
+            fastq_file_name = props["fastq_file_name"]
+            if "_R1" in fastq_file_name:
+                read_num = 1
+            elif "_R2" in fastq_file_name:
+                read_num = 2
+        if not read_num in [1, 2]:
+            raise Exception("Unknown read number '{}'. Should be either 1 or 2.".format(read_num))
+        if read_num == 1:
+            payload["read1_uri"] = file_id
+        else:
+            payload["read2_uri"] = file_id
     
-            if sreq.paired_end:
-                payload["pair_aligned_perc"] = round(float(asm["PAIR"]["PCT_READS_ALIGNED_IN_PAIRS"]) * 100, 2)
-            file_id = dxfile.id
-            if read_num == 1:
-                metrics = asm["FIRST_OF_PAIR"]
-                payload["read1_uri"] = file_id
-                payload["read1_count"] = metrics["PF_READS"]
-                payload["read1_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
-            else:
-                metrics = asm["SECOND_OF_PAIR"]
-                payload["read2_uri"] = file_id
-                payload["read2_count"] = metrics["PF_READS"]
-                payload["read2_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
-    models.SequencingResult.post(payload)
+    if asm:
+        if sreq.paired_end:
+            payload["pair_aligned_perc"] = round(float(asm["PAIR"]["PCT_READS_ALIGNED_IN_PAIRS"]) * 100, 2)
+        if read_num == 1:
+            metrics = asm["FIRST_OF_PAIR"]
+            payload["read1_count"] = metrics["PF_READS"]
+            payload["read1_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
+        else:
+            metrics = asm["SECOND_OF_PAIR"]
+            payload["read2_count"] = metrics["PF_READS"]
+            payload["read2_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
+    #models.SequencingResult.post(payload)
 
