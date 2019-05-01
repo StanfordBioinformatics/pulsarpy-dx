@@ -247,8 +247,8 @@ def import_library(srun_id, barcode, dxres):
         barcode_files = dxres.get_fastq_files_props(barcode=barcode)
     except du.FastqNotFound as e:
         logger.error(e.args)
-        #raise 
-        return
+        raise 
+        #return
     # Above - keys are the FASTQ file DXFile objects; values are the dict of associated properties
     # on DNAnexus on the file. In addition to the properties on the file in DNAnexus, an
     # additional property is present called 'fastq_file_name'.
@@ -296,5 +296,5 @@ def import_library(srun_id, barcode, dxres):
             metrics = asm["SECOND_OF_PAIR"]
             payload["read2_count"] = metrics["PF_READS"]
             payload["read2_aligned_perc"] = round(float(metrics["PCT_PF_READS_ALIGNED"]) * 100, 2)
-    #models.SequencingResult.post(payload)
+    models.SequencingResult.post(payload)
 
