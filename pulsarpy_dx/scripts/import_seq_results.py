@@ -19,6 +19,7 @@ environment variable PULSARPYDX_S3. The log files will be stored in this bucket 
 
 import argparse
 import datetime
+import time
 import logging
 import os
 
@@ -53,9 +54,11 @@ def main():
     args = parser.parse_args()
     log_s3 = args.log_s3
     days_ago = args.days_ago 
-    days_ago = "-" + str(days_ago) + "d" 
+    since_datetime = datetime.datetime.utcnow() - datetime.timedelta(days=days_ago)
+    since_timestamp_milliseconds = int(since_datetime.timestamp() * 1000)
    
-    projects = list(dxpy.find_projects(created_after=days_ago,billed_to=ENCODE_ORG))
+    projects = dxpy.api.org_find_projects(object_id=ENCODE_ORG, input_params={"created": {"after": since_timestamp_milliseconds}})
+    projects = projects["results"]
     # projects is a list of dicts (was a generator)
     num_projects = len(projects)
     logger.debug("Found {} projects.".format(num_projects))
@@ -67,6 +70,8 @@ def main():
 
     for i in projects:
         proj_id = i["id"]
+        print(proj_id)
+        du.share_with_org(project_ids=[proj_id], org=ENCODE_ORG, access_level="CONTRIBUTE")
         try:
             utils.import_dx_project(proj_id)
         except utils.MissingSequencingRequest:
